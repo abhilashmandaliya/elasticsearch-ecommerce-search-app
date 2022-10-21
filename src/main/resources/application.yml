@@ -8,7 +8,7 @@ micronaut:
         enabled: true
         mapping: /**
         paths:
-#          - classpath:static
+          #          - classpath:static
           - file:src/main/resources/static
 
 ---
@@ -28,3 +28,6 @@ jackson:
   serialization:
     indentOutput: true
     writeDatesAsTimestamps: false
+
+aerospike-hostname: 172.19.0.1
+aerospike-port: 49175
