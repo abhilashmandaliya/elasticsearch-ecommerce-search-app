@@ -1,5 +1,9 @@
 package elasticsearch.ecommerce.app.service;
 
+import com.aerospike.client.AerospikeClient;
+import com.aerospike.client.Key;
+import com.aerospike.client.Record;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import elasticsearch.ecommerce.app.entities.Query;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
@@ -49,10 +53,14 @@ public class ProductQueryService {
     private static final Logger LOG = LoggerFactory.getLogger(ProductQueryService.class);
 
     private final RestHighLevelClient client;
+    private final AerospikeClient aerospikeClient;
+    private final ObjectMapper mapper;
 
     @Inject
-    public ProductQueryService(RestHighLevelClient client) {
+    public ProductQueryService(RestHighLevelClient client, ObjectMapper mapper, AerospikeClient aerospikeClient) {
         this.client = client;
+        this.mapper = mapper;
+        this.aerospikeClient = aerospikeClient;
     }
 
     // search only across hits, don't include any aggregations
@@ -64,7 +72,7 @@ public class ProductQueryService {
      * This search filters for the specified aggregations, uses a post filter
      * The drawback of this solution is, that on selection of an aggregation, this is only appended to the post
      * filter, so the aggregation counts never change
-     *
+     * <p>
      * Stock and Price are created as regular filters as part of the query, which indeed will change the aggregations
      */
     public CompletableFuture<Response> searchWithAggs(Query query) throws IOException {
@@ -85,7 +93,7 @@ public class ProductQueryService {
 
         BoolQueryBuilder postFilterQuery = QueryBuilders.boolQuery();
         Map<String, List<Query.Filter>> byKey = query.getFilters().stream()
-                .filter(filter -> List.of("stock", "price").contains(filter.getKey()) == false)
+                .filter(filter -> !List.of("stock", "price").contains(filter.getKey()))
                 .collect(Collectors.groupingBy(Query.Filter::getKey));
         for (Map.Entry<String, List<Query.Filter>> entry : byKey.entrySet()) {
             BoolQueryBuilder orQueryBuilder = QueryBuilders.boolQuery();
@@ -129,7 +137,7 @@ public class ProductQueryService {
         // additional post filter for material, brand and color
         BoolQueryBuilder postFilterQuery = QueryBuilders.boolQuery();
         Map<String, List<Query.Filter>> byKey = query.getFilters().stream()
-                .filter(filter -> List.of("stock", "price").contains(filter.getKey()) == false)
+                .filter(filter -> !List.of("stock", "price").contains(filter.getKey()))
                 .collect(Collectors.groupingBy(Query.Filter::getKey));
         for (Map.Entry<String, List<Query.Filter>> entry : byKey.entrySet()) {
             BoolQueryBuilder orQueryBuilder = QueryBuilders.boolQuery();
@@ -144,6 +152,15 @@ public class ProductQueryService {
 
 
         return asyncSearch(queryBuilder, postFilterQuery, query.getFrom(), byColor, byBrand, byMaterialAgg, minPriceAgg, maxPriceAgg, inStockAgg);
+    }
+
+    /**
+     * This is the ultimate query, where all facets are filtered based on the fields of the other facets.
+     * This will result in a bigger query, but return proper numbers
+     */
+    public String searchProductFromAerospike(String id) throws IOException {
+        Record record = aerospikeClient.get(null, new Key("root", null, id));
+        return mapper.writeValueAsString(record);
     }
 
     /**
@@ -166,10 +183,10 @@ public class ProductQueryService {
         AggregationBuilder aggregationBuilder = AggregationBuilders.terms(aggregationName).field(fieldName + ".keyword");
         BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
         query.getFilters().stream()
-                .filter(filter -> filter.getKey().equals(fieldName) == false) // filter out itself
+                .filter(filter -> !filter.getKey().equals(fieldName)) // filter out itself
                 .forEach(filter -> queryBuilder.filter(filter.toQuery()));
 
-        if (queryBuilder.filter().isEmpty() == false) {
+        if (!queryBuilder.filter().isEmpty()) {
             aggregationBuilder = AggregationBuilders.filter(aggregationName, queryBuilder).subAggregation(aggregationBuilder);
         }
         return aggregationBuilder;

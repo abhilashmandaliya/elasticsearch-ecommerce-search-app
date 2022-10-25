@@ -5,7 +5,9 @@ import elasticsearch.ecommerce.app.service.ProductQueryService;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
+import io.micronaut.http.annotation.QueryValue;
 import org.elasticsearch.client.Response;
 
 import javax.inject.Inject;
@@ -35,5 +37,10 @@ public class SearchController {
     @Post(value = "products_with_filtered_aggs", produces = MediaType.APPLICATION_JSON, consumes = MediaType.APPLICATION_JSON)
     public CompletableFuture<Response> searchWithFilteredAggs(@Body Query query) throws IOException {
         return service.searchWithFilteredAggs(query);
+    }
+
+    @Get(value = "details")
+    public String details(@QueryValue String id) throws IOException {
+        return service.searchProductFromAerospike(id);
     }
 }

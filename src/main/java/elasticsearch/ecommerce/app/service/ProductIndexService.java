@@ -6,6 +6,7 @@ import com.aerospike.client.BatchWrite;
 import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
+import com.aerospike.client.policy.BatchPolicy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.javafaker.Faker;
 import elasticsearch.ecommerce.app.entities.Product;
@@ -39,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -75,9 +77,8 @@ public class ProductIndexService {
      * Create some random products, the user can specify how many
      *
      * @param count Number of products to be created
-     * @throws IOException
      */
-    public CompletableFuture<HttpStatus> indexProducts(int count) throws IOException {
+    public CompletableFuture<HttpStatus> indexProducts(int count) {
         return CompletableFuture.supplyAsync(() -> {
             try {
 
@@ -92,20 +93,22 @@ public class ProductIndexService {
                     client.indices().delete(new DeleteIndexRequest(INDEX), RequestOptions.DEFAULT);
                 }
 
-                try (Reader readerSettings = new InputStreamReader(this.getClass().getResourceAsStream("/index-settings.json"));
-                     Reader readerMappings = new InputStreamReader(this.getClass().getResourceAsStream("/index-mappings.json"))) {
+                try (Reader readerSettings = new InputStreamReader(Objects.requireNonNull(this.getClass().getResourceAsStream("/index-settings.json")));
+                     Reader readerMappings = new InputStreamReader(Objects.requireNonNull(this.getClass().getResourceAsStream("/index-mappings.json")))) {
                     String settings = Streams.copyToString(readerSettings);
                     String mapping = Streams.copyToString(readerMappings);
                     CreateIndexRequest createIndexRequest = new CreateIndexRequest(INDEX).settings(settings, XContentType.JSON).mapping(mapping, XContentType.JSON);
                     client.indices().create(createIndexRequest, RequestOptions.DEFAULT);
                 }
 
+                boolean hasItems = false;
                 BulkRequest request = new BulkRequest();
                 ArrayList<BatchRecord> batchRecords = new ArrayList<>(count);
                 for (int i = 0; i < count; i++) {
+                    hasItems = true;
                     String productName = faker.commerce().productName();
                     // This is to replace german prices with a comma with a proper decimal space...
-                    double price = Double.valueOf(faker.commerce().price(1, 1000).replace(",", "."));
+                    double price = Double.parseDouble(faker.commerce().price(1, 1000).replace(",", "."));
                     String material = faker.commerce().material();
                     String color = faker.color().name();
                     String id = faker.number().digits(20);
@@ -130,12 +133,15 @@ public class ProductIndexService {
                     if (request.estimatedSizeInBytes() > MAX_BULK_SIZE_IN_BYTES || batchRecords.size() >= 5000) {
                         request = putIntoElasticsearch(request);
                         batchRecords = putIntoAerospike(count, batchRecords);
+                        hasItems = false;
                     }
                 }
 
                 request.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
-                putIntoElasticsearch(request);
-                putIntoAerospike(count, batchRecords);
+                if (hasItems) {
+                    putIntoElasticsearch(request);
+                    putIntoAerospike(count, batchRecords);
+                }
                 return HttpStatus.OK;
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -162,7 +168,9 @@ public class ProductIndexService {
     }
 
     private ArrayList<BatchRecord> putIntoAerospike(int count, ArrayList<BatchRecord> batchRecords) {
-        aerospikeClient.operate(null, batchRecords);
+        BatchPolicy batchPolicy = new BatchPolicy();
+        batchPolicy.sendKey = true;
+        aerospikeClient.operate(batchPolicy, batchRecords);
         return new ArrayList<>(count);
     }
 
