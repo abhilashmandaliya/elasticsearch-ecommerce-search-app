@@ -111,7 +111,7 @@ public class ProductIndexService {
                     double price = Double.parseDouble(faker.commerce().price(1, 1000).replace(",", "."));
                     String material = faker.commerce().material();
                     String color = faker.color().name();
-                    String id = faker.number().digits(20);
+                    String id = faker.number().digits(12);
                     String brand = faker.options().nextElement(brandsArray);
                     // no text, we would need to deal with spaces and umlauts
                     int productImageId = faker.number().numberBetween(1, 1000);
@@ -131,7 +131,7 @@ public class ProductIndexService {
                     request.add(indexRequest);
 
                     if (request.estimatedSizeInBytes() > MAX_BULK_SIZE_IN_BYTES || batchRecords.size() >= 5000) {
-                        request = putIntoElasticsearch(request);
+//                        request = putIntoElasticsearch(request);
                         batchRecords = putIntoAerospike(count, batchRecords);
                         hasItems = false;
                     }
@@ -139,7 +139,7 @@ public class ProductIndexService {
 
                 request.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
                 if (hasItems) {
-                    putIntoElasticsearch(request);
+//                    putIntoElasticsearch(request);
                     putIntoAerospike(count, batchRecords);
                 }
                 return HttpStatus.OK;

@@ -204,23 +204,23 @@
                                         <span class="tag is-light">{{ index + 1 }}</span>
                                         <div class="card-image has-text-centered">
                                             <figure class="image is-128x128 is-inline-block">
-                                                <img class="is-rounded" v-bind:src="hit._source.productImageUrl"/>
+                                                <img class="is-rounded" v-bind:src="hit._source.productImage"/>
                                             </figure>
                                         </div>
                                         <div class="card-content">
                                             <div class="media">
                                                 <div class="media-left">
                                                     <figure class="image is-64x64">
-                                                        <img :src="hit._source.brandLogoUrl" alt="Placeholder image">
+                                                        <img :src="hit._source.brandLogo" alt="Placeholder image">
                                                     </figure>
                                                 </div>
                                             </div>
                                             <div class="media-content">
-                                                <p class="title is-6">{{ hit._source.name }}</p>
+                                                <p class="title is-6">{{ hit._source.productName }}</p>
                                                 <p class="subtitle is-7"><a
                                                         v-on:click="filters.push({ 'key': 'brand', 'value': hit._source.brand, 'type': 'term'})">by
                                                     {{ hit._source.brand }}</a></p>
-                                                <p class="subtitle is-7"><b>{{ hit._source.price }} EUR</b></p>
+                                                <p class="subtitle is-7"><b>₹ {{ hit._source.price }}</b></p>
                                             </div>
                                         </div>
 
@@ -228,8 +228,8 @@
                                             <template v-if="feature == 'products_with_filtered_aggs'">
                                                 <ul>
                                                     <li>
-                                                        <button @click="details(hit._source.id)">
-                                                            More details
+                                                        <button @click="details(hit._source.metadata.userKey)">
+                                                            More details {{ hit._id }}
                                                         </button>
                                                     </li>
                                                 </ul>
