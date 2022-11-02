@@ -7,17 +7,11 @@ import com.aerospike.client.Bin;
 import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.policy.BatchPolicy;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.javafaker.Faker;
-import elasticsearch.ecommerce.app.entities.Product;
 import io.micronaut.http.HttpStatus;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.admin.indices.open.OpenIndexRequest;
 import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
-import org.elasticsearch.action.bulk.BulkRequest;
-import org.elasticsearch.action.bulk.BulkResponse;
-import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.client.indices.CloseIndexRequest;
@@ -41,6 +35,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -64,13 +59,16 @@ public class ProductIndexService {
 
     private final RestHighLevelClient client;
     private final AerospikeClient aerospikeClient;
-    private final ObjectMapper mapper;
+
+    private static final List<String> colors = new ArrayList<>();
+    private static final Random random = new Random();
 
     @Inject
-    public ProductIndexService(RestHighLevelClient client, ObjectMapper mapper, AerospikeClient aerospikeClient) {
+    public ProductIndexService(RestHighLevelClient client, AerospikeClient aerospikeClient) {
         this.client = client;
-        this.mapper = mapper;
         this.aerospikeClient = aerospikeClient;
+        colors.add("pink");
+        colors.add("yellow");
     }
 
     /**
@@ -102,7 +100,6 @@ public class ProductIndexService {
                 }
 
                 boolean hasItems = false;
-                BulkRequest request = new BulkRequest();
                 ArrayList<BatchRecord> batchRecords = new ArrayList<>(count);
                 for (int i = 0; i < count; i++) {
                     hasItems = true;
@@ -110,7 +107,7 @@ public class ProductIndexService {
                     // This is to replace german prices with a comma with a proper decimal space...
                     double price = Double.parseDouble(faker.commerce().price(1, 1000).replace(",", "."));
                     String material = faker.commerce().material();
-                    String color = faker.color().name();
+                    String color = colors.get(random.nextInt(colors.size()));
                     String id = faker.number().digits(12);
                     String brand = faker.options().nextElement(brandsArray);
                     // no text, we would need to deal with spaces and umlauts
@@ -125,21 +122,13 @@ public class ProductIndexService {
                     int commission = faker.number().numberBetween(5, 20);
 
                     addIntoAerospikeBatch(batchRecords, productName, price, color, material, id, productImage, brand, brandLogo, lastUpdated, remainingStock, commission);
-                    Product product = new Product(productName, price, color, material, id, productImage, brand, brandLogo, lastUpdated, remainingStock, commission);
-                    IndexRequest indexRequest = new IndexRequest(INDEX).id(id);
-                    indexRequest.source(mapper.writeValueAsString(product), XContentType.JSON);
-                    request.add(indexRequest);
-
-                    if (request.estimatedSizeInBytes() > MAX_BULK_SIZE_IN_BYTES || batchRecords.size() >= 5000) {
-//                        request = putIntoElasticsearch(request);
+                    if (batchRecords.size() >= 5000) {
                         batchRecords = putIntoAerospike(count, batchRecords);
                         hasItems = false;
                     }
                 }
 
-                request.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
                 if (hasItems) {
-//                    putIntoElasticsearch(request);
                     putIntoAerospike(count, batchRecords);
                 }
                 return HttpStatus.OK;
@@ -172,12 +161,6 @@ public class ProductIndexService {
         batchPolicy.sendKey = true;
         aerospikeClient.operate(batchPolicy, batchRecords);
         return new ArrayList<>(count);
-    }
-
-    private BulkRequest putIntoElasticsearch(BulkRequest request) throws IOException {
-        BulkResponse response = client.bulk(request, RequestOptions.DEFAULT);
-        LOG.info("Indexed [{}] documents in [{}]", response.getItems().length, response.getTook());
-        return new BulkRequest();
     }
 
     public CompletableFuture<HttpStatus> configureSynonyms(String synonyms) {

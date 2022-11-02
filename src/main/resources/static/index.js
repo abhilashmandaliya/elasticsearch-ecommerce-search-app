@@ -77,7 +77,8 @@ var app = new Vue({
                     let data = response.data;
                     console.log("RESPONSE ", data);
                     let bins = data.bins;
-                    alert("color: " + bins.color +
+                    alert("Data from Aerospike (source of truth) " +
+                        "\ncolor: " + bins.color +
                         "\nmaterial: " + bins.material +
                         "\nremainingStock: " + bins.remainingStock +
                         "\ncommission: " + bins.commission +
