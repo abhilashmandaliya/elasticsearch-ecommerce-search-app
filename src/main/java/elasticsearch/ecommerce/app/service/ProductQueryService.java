@@ -1,5 +1,13 @@
 package elasticsearch.ecommerce.app.service;
 
+import co.elastic.clients.elasticsearch.ElasticsearchAsyncClient;
+import co.elastic.clients.elasticsearch._types.aggregations.Aggregation;
+import co.elastic.clients.elasticsearch._types.aggregations.AggregationBuilders;
+import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.QueryBuilders;
+import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery;
+import co.elastic.clients.json.JsonData;
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.Key;
 import com.aerospike.client.Record;
@@ -13,20 +21,15 @@ import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.ResponseListener;
-import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.SuppressForbidden;
-import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.aggregations.AggregationBuilder;
-import org.elasticsearch.search.aggregations.AggregationBuilders;
 import org.elasticsearch.search.aggregations.bucket.filter.FiltersAggregationBuilder;
 import org.elasticsearch.search.aggregations.bucket.filter.FiltersAggregator;
-import org.elasticsearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.elasticsearch.search.aggregations.metrics.MaxAggregationBuilder;
 import org.elasticsearch.search.aggregations.metrics.MinAggregationBuilder;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
@@ -52,12 +55,12 @@ public class ProductQueryService {
     private static final String INDEX = "products";
     private static final Logger LOG = LoggerFactory.getLogger(ProductQueryService.class);
 
-    private final RestHighLevelClient client;
+    private final ElasticsearchAsyncClient client;
     private final AerospikeClient aerospikeClient;
     private final ObjectMapper mapper;
 
     @Inject
-    public ProductQueryService(RestHighLevelClient client, ObjectMapper mapper, AerospikeClient aerospikeClient) {
+    public ProductQueryService(ElasticsearchAsyncClient client, ObjectMapper mapper, AerospikeClient aerospikeClient) {
         this.client = client;
         this.mapper = mapper;
         this.aerospikeClient = aerospikeClient;
@@ -76,19 +79,21 @@ public class ProductQueryService {
      * Stock and Price are created as regular filters as part of the query, which indeed will change the aggregations
      */
     public CompletableFuture<Response> searchWithAggs(Query query) throws IOException {
-        BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
-        queryBuilder.must(createFullTextSearchQuery(query));
+        BoolQuery.Builder queryBuilder = QueryBuilders.bool();
+        queryBuilder.must(createFullTextSearchQuery(query).build()._toQuery());
         // filter for price and stock, as they become range queries
         query.getFilters().stream().filter(filter -> List.of("stock", "price").contains(filter.getKey()))
                 .forEach(filter -> queryBuilder.must(filter.toQuery()));
 
-        MinAggregationBuilder minPriceAgg = AggregationBuilders.min("min_price").field("price");
-        MaxAggregationBuilder maxPriceAgg = AggregationBuilders.max("max_price").field("price");
-        TermsAggregationBuilder byMaterialAgg = AggregationBuilders.terms("by_material").field("material.keyword");
-        TermsAggregationBuilder byBrand = AggregationBuilders.terms("by_brand").field("brand.keyword");
-        TermsAggregationBuilder byColor = AggregationBuilders.terms("by_color").field("color.keyword");
-        FiltersAggregator.KeyedFilter notInStockFilter = new FiltersAggregator.KeyedFilter("not_in_stock", QueryBuilders.termQuery("stock", 0));
-        FiltersAggregator.KeyedFilter inStockFilter = new FiltersAggregator.KeyedFilter("in_stock", QueryBuilders.rangeQuery("stock").gt(0));
+        // min_price
+        Aggregation minPriceAgg = AggregationBuilders.min(builder -> builder.field("price"));
+        // max_price
+        Aggregation maxPriceAgg = AggregationBuilders.max(builder -> builder.field("price"));
+        Aggregation byMaterialAgg = AggregationBuilders.terms(builder -> builder.name("by_material").field("material.keyword"));
+        Aggregation byBrand = AggregationBuilders.terms(builder -> builder.name("by_brand").field("brand.keyword"));
+        Aggregation byColor = AggregationBuilders.terms(builder -> builder.name("by_color").field("color.keyword"));
+        Aggregation notInStockFilter = QueryBuilders.term(builder -> builder.field("stock").value(0).queryName("not_in_stock"))._toAggregation();
+        Aggregation inStockFilter = new RangeQuery.Builder().queryName("in_stock").field("stock").gt(JsonData.of(1)).build()._toQuery()._toAggregation();
         FiltersAggregationBuilder inStockAgg = AggregationBuilders.filters("by_stock", inStockFilter, notInStockFilter);
 
         BoolQueryBuilder postFilterQuery = QueryBuilders.boolQuery();
@@ -166,11 +171,14 @@ public class ProductQueryService {
     /**
      * Creates regular text search query
      */
-    private QueryBuilder createFullTextSearchQuery(Query query) {
-        BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
-        queryBuilder.must(QueryBuilders.multiMatchQuery(query.getQuery(), "name", "color", "brand", "material")
+    private BoolQuery.Builder createFullTextSearchQuery(Query query) {
+        BoolQuery.Builder queryBuilder = QueryBuilders.bool();
+        MultiMatchQuery multiMatchQuery = QueryBuilders.multiMatch()
+                .query(query.getQuery())
+                .fields("name", "color", "brand", "material")
                 .minimumShouldMatch("66%")
-                .fuzziness(Fuzziness.AUTO));
+                .fuzziness("AUTO").build();
+        queryBuilder.must(multiMatchQuery._toQuery());
         // increase scoring if we match in color, brand or material compared to product name
 //        queryBuilder.should(QueryBuilders.matchQuery("material", query.getQuery()));
 //        queryBuilder.should(QueryBuilders.matchQuery("color", query.getQuery()));

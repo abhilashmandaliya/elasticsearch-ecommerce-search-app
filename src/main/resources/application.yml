@@ -13,7 +13,7 @@ micronaut:
 
 ---
 elasticsearch:
-  httpHosts: "http://localhost:9200"
+  httpHosts: "https://localhost:9200"
 
 ---
 # WARNING: MASSIVW SECURITY HOLE!
@@ -29,5 +29,8 @@ jackson:
     indentOutput: true
     writeDatesAsTimestamps: false
 
-aerospike-hostname: 172.19.0.1
-aerospike-port: 49175
+aerospike-hostname: "localhost"
+aerospike-port: 3000
+
+elasticsearch-username: elastic
+elasticsearch-password: "8-FJDzUIDKwi4Kh_Oqp+"

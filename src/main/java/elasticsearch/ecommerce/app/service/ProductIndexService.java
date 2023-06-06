@@ -1,5 +1,10 @@
 package elasticsearch.ecommerce.app.service;
 
+import co.elastic.clients.elasticsearch.ElasticsearchAsyncClient;
+import co.elastic.clients.elasticsearch.indices.CreateIndexRequest;
+import co.elastic.clients.elasticsearch.indices.DeleteIndexRequest;
+import co.elastic.clients.elasticsearch.indices.ExistsRequest;
+import co.elastic.clients.elasticsearch.indices.IndexSettings;
 import com.aerospike.client.AerospikeClient;
 import com.aerospike.client.BatchRecord;
 import com.aerospike.client.BatchWrite;
@@ -9,19 +14,6 @@ import com.aerospike.client.Operation;
 import com.aerospike.client.policy.BatchPolicy;
 import com.github.javafaker.Faker;
 import io.micronaut.http.HttpStatus;
-import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
-import org.elasticsearch.action.admin.indices.open.OpenIndexRequest;
-import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
-import org.elasticsearch.client.RequestOptions;
-import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.client.indices.CloseIndexRequest;
-import org.elasticsearch.client.indices.CreateIndexRequest;
-import org.elasticsearch.client.indices.GetIndexRequest;
-import org.elasticsearch.common.io.Streams;
-import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.unit.ByteSizeUnit;
-import org.elasticsearch.common.unit.ByteSizeValue;
-import org.elasticsearch.common.xcontent.XContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +30,7 @@ import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 @Singleton
@@ -52,19 +45,18 @@ public class ProductIndexService {
             753, 754, 759, 761, 762, 763, 771, 792, 801, 812, 843, 850, 854, 895, 897, 899, 917, 920, 934, 956, 963, 968);
 
     private static final int BRANDS_MAX = 10;
-    private static final long MAX_BULK_SIZE_IN_BYTES = new ByteSizeValue(5, ByteSizeUnit.MB).getBytes();
     private static final String INDEX = "products";
     private static final Faker faker = Faker.instance();
     private static final Logger LOG = LoggerFactory.getLogger(ProductIndexService.class);
 
-    private final RestHighLevelClient client;
+    private final ElasticsearchAsyncClient client;
     private final AerospikeClient aerospikeClient;
 
     private static final List<String> colors = new ArrayList<>();
     private static final Random random = new Random();
 
     @Inject
-    public ProductIndexService(RestHighLevelClient client, AerospikeClient aerospikeClient) {
+    public ProductIndexService(ElasticsearchAsyncClient client, AerospikeClient aerospikeClient) {
         this.client = client;
         this.aerospikeClient = aerospikeClient;
         colors.add("pink");
@@ -86,17 +78,20 @@ public class ProductIndexService {
                 }
                 String[] brandsArray = brands.toArray(new String[0]);
 
-                boolean exists = client.indices().exists(new GetIndexRequest(INDEX), RequestOptions.DEFAULT);
+                boolean exists = client.indices().exists(
+                        ExistsRequest.of(builder -> builder.index(INDEX))).get().value();
                 if (exists) {
-                    client.indices().delete(new DeleteIndexRequest(INDEX), RequestOptions.DEFAULT);
+                    client.indices().delete(DeleteIndexRequest.of(builder -> builder.index(INDEX)));
                 }
 
                 try (Reader readerSettings = new InputStreamReader(Objects.requireNonNull(this.getClass().getResourceAsStream("/index-settings.json")));
                      Reader readerMappings = new InputStreamReader(Objects.requireNonNull(this.getClass().getResourceAsStream("/index-mappings.json")))) {
-                    String settings = Streams.copyToString(readerSettings);
-                    String mapping = Streams.copyToString(readerMappings);
-                    CreateIndexRequest createIndexRequest = new CreateIndexRequest(INDEX).settings(settings, XContentType.JSON).mapping(mapping, XContentType.JSON);
-                    client.indices().create(createIndexRequest, RequestOptions.DEFAULT);
+                    CreateIndexRequest createIndexRequest = CreateIndexRequest.of(cirb ->
+                            cirb.index(INDEX)
+                                    .settings(IndexSettings.of(isb -> isb.withJson(readerSettings)))
+                                    .withJson(readerMappings)
+                    );
+                    client.indices().create(createIndexRequest);
                 }
 
                 boolean hasItems = false;
@@ -132,7 +127,7 @@ public class ProductIndexService {
                     putIntoAerospike(count, batchRecords);
                 }
                 return HttpStatus.OK;
-            } catch (IOException e) {
+            } catch (IOException | InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
         });
@@ -141,7 +136,7 @@ public class ProductIndexService {
     private void addIntoAerospikeBatch(ArrayList<BatchRecord> batchRecords, String productName, double price,
                                        String color, String material, String id, String productImage, String brand,
                                        String brandLogo, Date lastUpdated, int remainingStock, int commission) {
-        Key key = new Key("root", null, id);
+        Key key = new Key("root", "test", id);
         Operation[] operations = Operation.array(
                 Operation.put(new Bin("productName", productName)),
                 Operation.put(new Bin("price", price)),
@@ -164,18 +159,19 @@ public class ProductIndexService {
     }
 
     public CompletableFuture<HttpStatus> configureSynonyms(String synonyms) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                client.indices().close(new CloseIndexRequest(INDEX), RequestOptions.DEFAULT);
-                Settings settings = Settings.builder()
-                        .putList("index.analysis.filter.my_synonym_filter.synonyms", synonyms.split("\n"))
-                        .build();
-                client.indices().putSettings(new UpdateSettingsRequest(INDEX).settings(settings), RequestOptions.DEFAULT);
-                client.indices().open(new OpenIndexRequest().indices(INDEX), RequestOptions.DEFAULT);
-                return HttpStatus.OK;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        throw new RuntimeException("unimplemented with the new API client usage");
+//        return CompletableFuture.supplyAsync(() -> {
+//            try {
+//                client.indices().close(new CloseIndexRequest(INDEX), RequestOptions.DEFAULT);
+//                Settings settings = Settings.builder()
+//                        .putList("index.analysis.filter.my_synonym_filter.synonyms", synonyms.split("\n"))
+//                        .build();
+//                client.indices().putSettings(new UpdateSettingsRequest(INDEX).settings(settings), RequestOptions.DEFAULT);
+//                client.indices().open(new OpenIndexRequest().indices(INDEX), RequestOptions.DEFAULT);
+//                return HttpStatus.OK;
+//            } catch (IOException e) {
+//                throw new RuntimeException(e);
+//            }
+//        });
     }
 }

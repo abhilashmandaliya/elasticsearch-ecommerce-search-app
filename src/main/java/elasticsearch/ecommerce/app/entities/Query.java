@@ -1,9 +1,7 @@
 package elasticsearch.ecommerce.app.entities;
 
-import org.elasticsearch.common.Strings;
-import org.elasticsearch.index.query.QueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.index.query.RangeQueryBuilder;
+import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.TermQuery;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -65,9 +63,9 @@ public class Query {
             return value;
         }
 
-        public QueryBuilder toQuery() {
+        public co.elastic.clients.elasticsearch._types.query_dsl.Query toQuery() {
             if ("term".equals(type)) {
-                return QueryBuilders.termQuery(this.key + ".keyword", this.value);
+                return new TermQuery.Builder().value(this.value).field(this.key + ".keyword").build()._toQuery();
             } else if ("range".equals(type)) {
                 return createRangeQueryBuilder(key, from, to);
             } else {
@@ -75,16 +73,15 @@ public class Query {
             }
         }
 
-        private RangeQueryBuilder createRangeQueryBuilder(String name, String from, String to) {
-            RangeQueryBuilder rangeQueryBuilder = QueryBuilders.rangeQuery(name);
-            if (Strings.isEmpty(from) == false) {
+        private co.elastic.clients.elasticsearch._types.query_dsl.Query createRangeQueryBuilder(String name, String from, String to) {
+            RangeQuery.Builder rangeQueryBuilder = new RangeQuery.Builder().queryName(name);
+            if (!from.isEmpty()) {
                 rangeQueryBuilder.from(from);
             }
-            if (Strings.isEmpty(to) == false) {
+            if (!to.isEmpty()) {
                 rangeQueryBuilder.to(to);
             }
-
-            return rangeQueryBuilder;
+            return rangeQueryBuilder.build()._toQuery();
         }
     }
 }
