@@ -1,11 +1,10 @@
 ---
-version: '3.6'
+version: '3.7'
 services:
   elasticsearch_ecommerce_search_sample:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.8.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.10
     container_name: elasticsearch_ecommerce_search_sample
-    ports: ['9200:9200']
-    networks: ['stack']
+    ports: [ '9200:9200' ]
     volumes:
       - ./es_data:/var/lib/elasticsearch/data
     environment:
@@ -18,23 +17,36 @@ services:
       memlock:
         soft: -1
         hard: -1
-    networks:
-      - stack
 
   kibana_ecommerce_search_sample:
-    image: docker.elastic.co/kibana/kibana:7.8.0
+    image: docker.elastic.co/kibana/kibana:7.17.10
     container_name: kibana_ecommerce_search_sample
-    ports: ['5601:5601']
-    networks: ['stack']
-    depends_on: ['elasticsearch_ecommerce_search_sample']
-    networks:
-      - stack
+    ports: [ '5601:5601' ]
+    depends_on: [ 'elasticsearch_ecommerce_search_sample' ]
     environment:
-            ELASTICSEARCH_HOSTS: http://elasticsearch_ecommerce_search_sample:9200
+      ELASTICSEARCH_HOSTS: http://elasticsearch_ecommerce_search_sample:9200
 
-networks: {stack: {}}
+  aerospike:
+    image: aerospike/aerospike-server-enterprise:6.3.0.4
+    container_name: aerospike_ecommerce_search_sample
+    ports: [ '3000:3000' ]
+    labels:
+      com.aerospike.cluster: "ecommerce-app"
+    volumes:
+      - .:/etc/aerospike
+      - "./aerospike.conf:/etc/aerospike/aerospike.conf"
+      - "./features.conf:/etc/aerospike/features.conf"
 
-# use docker volume to persist ES data outside of a container.
+  elasticsearch_outbound:
+    image: aerospike/aerospike-elasticsearch-outbound:2.0.0
+    container_name: aerospike_elasticsearch_outbound_ecommerce_search_sample
+    ports: [ '8901:8901', '8902:8902' ]
+    labels:
+      com.aerospike.elasticsearch.outbound.cluster: "ecommerce-app"
+    volumes:
+      - ./aerospike-elasticsearch-outbound.yml:/etc/aerospike-elasticsearch-outbound/aerospike-elasticsearch-outbound.yml
+
+# use docker volume to persist ES data outside a container.
 volumes:
   es_data:
     driver: local

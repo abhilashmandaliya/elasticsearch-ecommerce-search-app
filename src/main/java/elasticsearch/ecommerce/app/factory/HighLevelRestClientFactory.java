@@ -10,6 +10,7 @@ import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+@SuppressWarnings("deprecation")
 @Factory
 public class HighLevelRestClientFactory {
 

@@ -77,10 +77,10 @@ public class Query {
 
         private RangeQueryBuilder createRangeQueryBuilder(String name, String from, String to) {
             RangeQueryBuilder rangeQueryBuilder = QueryBuilders.rangeQuery(name);
-            if (Strings.isEmpty(from) == false) {
+            if (!Strings.isEmpty(from)) {
                 rangeQueryBuilder.from(from);
             }
-            if (Strings.isEmpty(to) == false) {
+            if (!Strings.isEmpty(to)) {
                 rangeQueryBuilder.to(to);
             }
 

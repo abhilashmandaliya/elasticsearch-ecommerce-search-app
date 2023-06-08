@@ -29,5 +29,5 @@ jackson:
     indentOutput: true
     writeDatesAsTimestamps: false
 
-aerospike-hostname: 172.19.0.1
-aerospike-port: 49175
+aerospike-hostname: localhost
+aerospike-port: 3000

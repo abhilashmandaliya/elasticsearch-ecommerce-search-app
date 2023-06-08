@@ -1,0 +1,30 @@
+# Change the configuration for your use case.
+#
+# Refer to https://www.aerospike.com/docs/connectors/enterprise/elasticsearch/outbound/configuration/index.html
+# for details.
+
+# The connector's listening ports, manage service, TLS and network interface.
+service:
+  port: 8901
+  # Aerospike Enterprise Server >= 5.0
+  manage:
+    address: 0.0.0.0
+    port: 8902
+
+# Aerospike record routing to an Elasticsearch index.
+routing:
+  mode: static
+  destination: aerospike
+
+# The logging properties
+logging:
+  file: /var/log/aerospike-elasticsearch-outbound/aerospike-elasticsearch-outbound.log
+  enable-console-logging: true
+
+es-client:
+  cluster-config:
+    type: on-prem
+    nodes:
+      - host:
+          hostname: aerospike_elasticsearch_ecommerce_search_sample
+          port: 9200
