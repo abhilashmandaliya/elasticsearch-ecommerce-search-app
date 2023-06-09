@@ -26,5 +26,5 @@ es-client:
     type: on-prem
     nodes:
       - host:
-          hostname: aerospike_elasticsearch_ecommerce_search_sample
+          hostname: elasticsearch_ecommerce_search_sample
           port: 9200
