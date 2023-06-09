@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+@SuppressWarnings("deprecation")
 @Singleton
 public class ProductQueryService {
 
@@ -49,7 +50,7 @@ public class ProductQueryService {
     // TODO have search searching for impressum/jobs
     // TODO search with search as you type
 
-    private static final String INDEX = "products";
+    private static final String INDEX = "aerospike";
     private static final Logger LOG = LoggerFactory.getLogger(ProductQueryService.class);
 
     private final RestHighLevelClient client;
@@ -168,7 +169,7 @@ public class ProductQueryService {
      */
     private QueryBuilder createFullTextSearchQuery(Query query) {
         BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
-        queryBuilder.must(QueryBuilders.multiMatchQuery(query.getQuery(), "name", "color", "brand", "material")
+        queryBuilder.must(QueryBuilders.multiMatchQuery(query.getQuery(), "productName", "color", "brand", "material")
                 .minimumShouldMatch("66%")
                 .fuzziness(Fuzziness.AUTO));
         // increase scoring if we match in color, brand or material compared to product name
