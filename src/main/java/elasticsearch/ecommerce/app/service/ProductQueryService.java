@@ -5,6 +5,8 @@ import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import elasticsearch.ecommerce.app.entities.Query;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.nio.entity.NByteArrayEntity;
@@ -37,22 +39,25 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import static java.util.Collections.emptyMap;
+
 @SuppressWarnings("deprecation")
 @Singleton
-public class ProductQueryService {
+public class ProductQueryService extends ProductServiceBase {
 
     // TODO have search with aggs + custom scoring
     // TODO have search searching for impressum/jobs
     // TODO search with search as you type
 
-    private static final String INDEX = "aerospike";
     private static final Logger LOG = LoggerFactory.getLogger(ProductQueryService.class);
-
+    private static final String PRODUCT_IMAGE = "productImage";
+    private static final String BRAND_LOGO = "brandLogo";
     private final RestHighLevelClient client;
     private final AerospikeClient aerospikeClient;
     private final ObjectMapper mapper;
@@ -65,7 +70,7 @@ public class ProductQueryService {
     }
 
     // search only across hits, don't include any aggregations
-    public CompletableFuture<Response> searchProductsOnly(Query query) throws IOException {
+    public CompletableFuture<Map<String, Object>> searchProductsOnly(Query query) throws IOException {
         return asyncSearch(createFullTextSearchQuery(query), null, query.getFrom());
     }
 
@@ -76,11 +81,11 @@ public class ProductQueryService {
      * <p>
      * Stock and Price are created as regular filters as part of the query, which indeed will change the aggregations
      */
-    public CompletableFuture<Response> searchWithAggs(Query query) throws IOException {
+    public CompletableFuture<Map<String, Object>> searchWithAggs(Query query) throws IOException {
         BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
         queryBuilder.must(createFullTextSearchQuery(query));
         // filter for price and stock, as they become range queries
-        query.getFilters().stream().filter(filter -> List.of("stock", "price").contains(filter.getKey()))
+        query.getFilters().stream().filter(filter -> List.of("remainingStock", "price").contains(filter.getKey()))
                 .forEach(filter -> queryBuilder.must(filter.toQuery()));
 
         MinAggregationBuilder minPriceAgg = AggregationBuilders.min("min_price").field("price");
@@ -88,13 +93,13 @@ public class ProductQueryService {
         TermsAggregationBuilder byMaterialAgg = AggregationBuilders.terms("by_material").field("material.keyword");
         TermsAggregationBuilder byBrand = AggregationBuilders.terms("by_brand").field("brand.keyword");
         TermsAggregationBuilder byColor = AggregationBuilders.terms("by_color").field("color.keyword");
-        FiltersAggregator.KeyedFilter notInStockFilter = new FiltersAggregator.KeyedFilter("not_in_stock", QueryBuilders.termQuery("stock", 0));
-        FiltersAggregator.KeyedFilter inStockFilter = new FiltersAggregator.KeyedFilter("in_stock", QueryBuilders.rangeQuery("stock").gt(0));
+        FiltersAggregator.KeyedFilter notInStockFilter = new FiltersAggregator.KeyedFilter("not_in_stock", QueryBuilders.termQuery("remainingStock", 0));
+        FiltersAggregator.KeyedFilter inStockFilter = new FiltersAggregator.KeyedFilter("in_stock", QueryBuilders.rangeQuery("remainingStock").gt(0));
         FiltersAggregationBuilder inStockAgg = AggregationBuilders.filters("by_stock", inStockFilter, notInStockFilter);
 
         BoolQueryBuilder postFilterQuery = QueryBuilders.boolQuery();
         Map<String, List<Query.Filter>> byKey = query.getFilters().stream()
-                .filter(filter -> !List.of("stock", "price").contains(filter.getKey()))
+                .filter(filter -> !List.of("remainingStock", "price").contains(filter.getKey()))
                 .collect(Collectors.groupingBy(Query.Filter::getKey));
         for (Map.Entry<String, List<Query.Filter>> entry : byKey.entrySet()) {
             BoolQueryBuilder orQueryBuilder = QueryBuilders.boolQuery();
@@ -115,20 +120,20 @@ public class ProductQueryService {
      * This is the ultimate query, where all facets are filtered based on the fields of the other facets.
      * This will result in a bigger query, but return proper numbers
      */
-    public CompletableFuture<Response> searchWithFilteredAggs(Query query) throws IOException {
+    public CompletableFuture<Map<String, Object>> searchWithFilteredAggs(Query query) throws IOException {
         // this is the query for the total hits and the initial aggregations
         BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
         queryBuilder.must(createFullTextSearchQuery(query));
         // filter for price and stock, as they become range queries
-        query.getFilters().stream().filter(filter -> List.of("stock", "price").contains(filter.getKey()))
+        query.getFilters().stream().filter(filter -> List.of("remainingStock", "price").contains(filter.getKey()))
                 .forEach(filter -> queryBuilder.must(filter.toQuery()));
 
         // TODO these also need to be possibly filtered!
         MinAggregationBuilder minPriceAgg = AggregationBuilders.min("min_price").field("price");
         MaxAggregationBuilder maxPriceAgg = AggregationBuilders.max("max_price").field("price");
 
-        FiltersAggregator.KeyedFilter notInStockFilter = new FiltersAggregator.KeyedFilter("not_in_stock", QueryBuilders.termQuery("stock", 0));
-        FiltersAggregator.KeyedFilter inStockFilter = new FiltersAggregator.KeyedFilter("in_stock", QueryBuilders.rangeQuery("stock").gt(0));
+        FiltersAggregator.KeyedFilter notInStockFilter = new FiltersAggregator.KeyedFilter("not_in_stock", QueryBuilders.termQuery("remainingStock", 0));
+        FiltersAggregator.KeyedFilter inStockFilter = new FiltersAggregator.KeyedFilter("in_stock", QueryBuilders.rangeQuery("remainingStock").gt(0));
         FiltersAggregationBuilder inStockAgg = AggregationBuilders.filters("by_stock", inStockFilter, notInStockFilter);
 
         AggregationBuilder byMaterialAgg = createPossiblyFilteredAgg(query, "by_material", "material");
@@ -138,7 +143,7 @@ public class ProductQueryService {
         // additional post filter for material, brand and color
         BoolQueryBuilder postFilterQuery = QueryBuilders.boolQuery();
         Map<String, List<Query.Filter>> byKey = query.getFilters().stream()
-                .filter(filter -> !List.of("stock", "price").contains(filter.getKey()))
+                .filter(filter -> !List.of("remainingStock", "price").contains(filter.getKey()))
                 .collect(Collectors.groupingBy(Query.Filter::getKey));
         for (Map.Entry<String, List<Query.Filter>> entry : byKey.entrySet()) {
             BoolQueryBuilder orQueryBuilder = QueryBuilders.boolQuery();
@@ -156,8 +161,7 @@ public class ProductQueryService {
     }
 
     /**
-     * This is the ultimate query, where all facets are filtered based on the fields of the other facets.
-     * This will result in a bigger query, but return proper numbers
+     * Fetch product details from Aerospike.
      */
     public String searchProductFromAerospike(String id) throws IOException {
         Record record = aerospikeClient.get(null, new Key("root", null, id));
@@ -165,11 +169,19 @@ public class ProductQueryService {
     }
 
     /**
+     * Get product image URL from the Aerospike.
+     */
+    public Pair<String, String> getProductImageAndBrandLogoFromAerospike(String id) {
+        Record record = aerospikeClient.get(null, new Key("root", null, id));
+        return new ImmutablePair<>((String) record.bins.get(PRODUCT_IMAGE), (String) record.bins.get(BRAND_LOGO));
+    }
+
+    /**
      * Creates regular text search query
      */
     private QueryBuilder createFullTextSearchQuery(Query query) {
         BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
-        queryBuilder.must(QueryBuilders.multiMatchQuery(query.getQuery(), "productName", "color", "brand", "material")
+        queryBuilder.must(QueryBuilders.multiMatchQuery(query.getQuery(), "productName", "productDesc", "color", "brand", "material")
                 .minimumShouldMatch("66%")
                 .fuzziness(Fuzziness.AUTO));
         // increase scoring if we match in color, brand or material compared to product name
@@ -193,9 +205,9 @@ public class ProductQueryService {
         return aggregationBuilder;
     }
 
-    private CompletableFuture<Response> asyncSearch(QueryBuilder queryBuilder, QueryBuilder postFilterQuery, int from, AggregationBuilder... aggs) throws IOException {
+    private CompletableFuture<Map<String, Object>> asyncSearch(QueryBuilder queryBuilder, QueryBuilder postFilterQuery, int from, AggregationBuilder... aggs) throws IOException {
         SearchRequest request = search(queryBuilder, postFilterQuery, from, aggs);
-        final CompletableFuture<Response> future = new CompletableFuture<>();
+        final CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
         ResponseListener listener = newResponseListener(future);
 
         Request lowLevelRequest = new Request(HttpPost.METHOD_NAME, INDEX + "/_search");
@@ -229,12 +241,32 @@ public class ProductQueryService {
         return ContentType.create(xContentType.mediaTypeWithoutParameters(), (Charset) null);
     }
 
-    private ResponseListener newResponseListener(final CompletableFuture<Response> future) {
+    private ResponseListener newResponseListener(final CompletableFuture<Map<String, Object>> future) {
         return new ResponseListener() {
 
             @Override
+            @SuppressWarnings("unchecked")
             public void onSuccess(Response response) {
-                future.complete(response);
+                Map<String, Object> responesMap = emptyMap();
+                if (response.getStatusLine().getStatusCode() == 200) {
+                    try {
+                        responesMap = MAPPER.readValue(response.getEntity().getContent(), Map.class);
+                        ((List<Map<String, Object>>) ((Map<String, Object>) responesMap.getOrDefault("hits", emptyMap()))
+                                .getOrDefault("hits", Collections.emptyList())).forEach(hit -> {
+                            Map<String, Object> sourceMap = (Map<String, Object>) hit.getOrDefault("_source", emptyMap());
+                            Map<String, Object> metadataMap = (Map<String, Object>) sourceMap.get("metadata");
+                            String userKey = (String) metadataMap.get("userKey");
+                            if (userKey != null) {
+                                Pair<String, String> productImageAndBrandLogoPair = getProductImageAndBrandLogoFromAerospike(userKey);
+                                sourceMap.put(PRODUCT_IMAGE, productImageAndBrandLogoPair.getLeft());
+                                sourceMap.put(BRAND_LOGO, productImageAndBrandLogoPair.getRight());
+                            }
+                        });
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+                future.complete(responesMap);
             }
 
             @Override
@@ -243,5 +275,4 @@ public class ProductQueryService {
             }
         };
     }
-
 }

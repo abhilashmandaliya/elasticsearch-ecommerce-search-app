@@ -146,7 +146,7 @@
                                         }} </span></p>
                                 </div>
                                 <button class="button is-primary"
-                                        v-on:click="filters.push({ 'key': 'stock', 'value': '1-', 'type': 'range', 'from': 1 })">
+                                        v-on:click="filters.push({ 'key': 'remainingStock', 'value': '1-', 'type': 'range', 'from': 1 })">
                                     Filter In Stock!
                                 </button>
                             </div>
@@ -220,6 +220,7 @@
                                                 <p class="subtitle is-7"><a
                                                         v-on:click="filters.push({ 'key': 'brand', 'value': hit._source.brand, 'type': 'term'})">by
                                                     {{ hit._source.brand }}</a></p>
+                                                <p class="subtitle is-7"><b>{{ hit._source.productDesc }}</b></p>
                                                 <p class="subtitle is-7"><b>₹ {{ hit._source.price }}</b></p>
                                             </div>
                                         </div>
@@ -228,7 +229,10 @@
                                             <template v-if="feature == 'products_with_filtered_aggs'">
                                                 <ul>
                                                     <li>
-                                                        <button @click="details(hit._source.metadata.userKey)">
+                                                        <button style="background-color: #50bfff; color: #fff;
+                                                        padding: 10px 50px; border: 1px solid #ddd; border-radius: 4px;
+                                                        font-size: 18px;"
+                                                                @click="details(hit._source.metadata.userKey)">
                                                             More details
                                                         </button>
                                                     </li>

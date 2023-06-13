@@ -73,7 +73,7 @@ A request can look like this
   "filters": [
     {"key":"material","value":"Stahl","type":"term"},
     {"key":"brand","value":"Cleem GmbH","type":"term"},
-    {"key":"stock","value":"1-","type":"range","from":1}
+    {"key":"remainingStock","value":"1-","type":"range","from":1}
   ]
 }
 ```
@@ -88,25 +88,25 @@ You can select between different search types.
 
 You can select different modes of operation right next to the search bar
 
-##### `Products` view 
+##### `Products` view
 
 ![Products only](/images/search-products.png?raw=true "Products only")
 
 This view features a list of products returned by the search query.
 
-##### `Products & Aggregations` view 
+##### `Products & Aggregations` view
 
 ![Aggs & counts](/images/search-aggs-filterable.png?raw=true "Aggs & counts")
 
 This view contains aggregations on the left including counts.
 
-##### `Products & Selectable Aggs` view 
+##### `Products & Selectable Aggs` view
 
 ![Selectable Aggs](/images/search-aggs-filterable.png?raw=true "Selectable Aggs")
 
 This view allows to filter products by selecting aggregations on the left.
 
-##### `Products & Selectable Filtered Aggs` view 
+##### `Products & Selectable Filtered Aggs` view
 
 ![Filtered Aggs](/images/search-aggs-filterable.png?raw=true "Filtered Aggs")
 
@@ -122,7 +122,6 @@ When clicking the button to configure synonyms, the index will be closed, the
 synonyms will be applied and then opened again. Note, that there is no error
 handling, so if you create invalid synonyms, then you might need to reopen the
 index manually.
-
 
 # TODO
 

@@ -8,7 +8,10 @@ import com.aerospike.client.Key;
 import com.aerospike.client.Operation;
 import com.aerospike.client.policy.BatchPolicy;
 import com.github.javafaker.Faker;
+import com.github.javafaker.service.FakeValuesService;
+import com.github.javafaker.service.RandomService;
 import io.micronaut.http.HttpStatus;
+import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.admin.indices.open.OpenIndexRequest;
 import org.elasticsearch.action.admin.indices.settings.put.UpdateSettingsRequest;
@@ -19,11 +22,7 @@ import org.elasticsearch.client.indices.CreateIndexRequest;
 import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.common.io.Streams;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.unit.ByteSizeUnit;
-import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.xcontent.XContentType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -34,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
@@ -41,7 +41,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Singleton
-public class ProductIndexService {
+public class ProductIndexService extends ProductServiceBase {
 
     // Found via
     // for i in $(jot 1000) ; do curl -s -X HEAD "https://picsum.photos/id/$i/200/200" -w '%{http_code} %{url_effective}\n' | tee -a /tmp/head.log ; done
@@ -52,23 +52,38 @@ public class ProductIndexService {
             753, 754, 759, 761, 762, 763, 771, 792, 801, 812, 843, 850, 854, 895, 897, 899, 917, 920, 934, 956, 963, 968);
 
     private static final int BRANDS_MAX = 10;
-    private static final long MAX_BULK_SIZE_IN_BYTES = new ByteSizeValue(5, ByteSizeUnit.MB).getBytes();
-    private static final String INDEX = "products";
-    private static final Faker faker = Faker.instance();
-    private static final Logger LOG = LoggerFactory.getLogger(ProductIndexService.class);
 
+    private static final Faker faker = Faker.instance();
+
+    @SuppressWarnings("deprecation")
     private final RestHighLevelClient client;
     private final AerospikeClient aerospikeClient;
 
     private static final List<String> colors = new ArrayList<>();
     private static final Random random = new Random();
+    private final FakeValuesService fakeValuesService;
+    private final ArrayList<String> part1;
+    private final ArrayList<String> part2;
 
+    @SuppressWarnings("deprecation")
     @Inject
     public ProductIndexService(RestHighLevelClient client, AerospikeClient aerospikeClient) {
         this.client = client;
         this.aerospikeClient = aerospikeClient;
         colors.add("pink");
         colors.add("yellow");
+        RandomService randomService = new RandomService();
+        this.fakeValuesService = new FakeValuesService(Locale.ENGLISH, randomService);
+
+        this.part1 = new ArrayList<>();
+        part1.add("on");
+        part1.add("for");
+        part1.add("with");
+
+        this.part2 = new ArrayList<>();
+        part2.add("specially for");
+        part2.add("usable by");
+        part2.add("suitable in");
     }
 
     /**
@@ -103,7 +118,8 @@ public class ProductIndexService {
                 ArrayList<BatchRecord> batchRecords = new ArrayList<>(count);
                 for (int i = 0; i < count; i++) {
                     hasItems = true;
-                    String productName = faker.commerce().productName();
+                    String productName = getProductName();
+                    String productDesc = getProductDesc();
                     // This is to replace german prices with a comma with a proper decimal space...
                     double price = Double.parseDouble(faker.commerce().price(1, 1000).replace(",", "."));
                     String material = faker.commerce().material();
@@ -121,7 +137,7 @@ public class ProductIndexService {
                     int remainingStock = faker.number().numberBetween(0, 10);
                     int commission = faker.number().numberBetween(5, 20);
 
-                    addIntoAerospikeBatch(batchRecords, productName, price, color, material, id, productImage, brand, brandLogo, lastUpdated, remainingStock, commission);
+                    addIntoAerospikeBatch(batchRecords, productName, productDesc, price, color, material, id, productImage, brand, brandLogo, lastUpdated, remainingStock, commission);
                     if (batchRecords.size() >= 5000) {
                         batchRecords = putIntoAerospike(count, batchRecords);
                         hasItems = false;
@@ -138,12 +154,32 @@ public class ProductIndexService {
         });
     }
 
-    private void addIntoAerospikeBatch(ArrayList<BatchRecord> batchRecords, String productName, double price,
+    private String getProductDesc() {
+        return StringUtils.join(new String[]{
+                fakeValuesService.resolve("commerce.promotion_code.adjective", this, faker),
+                fakeValuesService.resolve("commerce.promotion_code.noun", this, faker),
+                part1.get(random.nextInt(part1.size())),
+                fakeValuesService.resolve("commerce.product_name.adjective", this, faker),
+                fakeValuesService.resolve("commerce.product_name.material", this, faker),
+                fakeValuesService.resolve("commerce.product_name.product", this, faker),
+                part2.get(random.nextInt(part2.size())),
+                fakeValuesService.resolve("commerce.department", this, faker),
+        }, " ");
+    }
+
+    private String getProductName() {
+        return StringUtils.join(new String[]{
+                fakeValuesService.resolve("commerce.product_name.material", this, faker),
+                fakeValuesService.resolve("commerce.product_name.product", this, faker)}, " ");
+    }
+
+    private void addIntoAerospikeBatch(ArrayList<BatchRecord> batchRecords, String productName, String productDesc, double price,
                                        String color, String material, String id, String productImage, String brand,
                                        String brandLogo, Date lastUpdated, int remainingStock, int commission) {
         Key key = new Key("root", null, id);
         Operation[] operations = Operation.array(
                 Operation.put(new Bin("productName", productName)),
+                Operation.put(new Bin("productDesc", productDesc)),
                 Operation.put(new Bin("price", price)),
                 Operation.put(new Bin("color", color)),
                 Operation.put(new Bin("material", material)),
