@@ -78,10 +78,11 @@ var app = new Vue({
                     console.log("RESPONSE ", data);
                     let bins = data.bins;
                     alert("Data from Aerospike (source of truth) " +
-                        "\nproductImage: " + bins.productImage +
-                        "\nbrandLogo: " + bins.brandLogo +
-                        "\nlastUpdated: " + bins.lastUpdated +
-                        "\ncommission: " + bins.commission);
+                        "\ncolor: " + bins.color +
+                        "\nmaterial: " + bins.material +
+                        "\nremainingStock: " + bins.remainingStock +
+                        "\ncommission: " + bins.commission +
+                        "\nlastUpdated: " + bins.lastUpdated);
                 })
         }
     }

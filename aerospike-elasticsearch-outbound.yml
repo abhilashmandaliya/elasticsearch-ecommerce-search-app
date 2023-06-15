@@ -11,10 +11,18 @@ service:
     address: 0.0.0.0
     port: 8902
 
+bulk-request-config:
+  aerospike-write-operation-mapping:
+    operation-type: update
+    doc-as-upsert: true
+
 # Aerospike record routing to an Elasticsearch index.
 routing:
   mode: static
   destination: aerospike
+
+doc-id:
+  source: user-key
 
 # The logging properties
 logging:

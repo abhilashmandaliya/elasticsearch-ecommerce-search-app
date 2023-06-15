@@ -8,10 +8,10 @@ import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
+import org.elasticsearch.client.Response;
 
 import javax.inject.Inject;
 import java.io.IOException;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 @Controller("/search")
@@ -25,17 +25,17 @@ public class SearchController {
     }
 
     @Post(value = "products_only", produces = MediaType.APPLICATION_JSON, consumes = MediaType.APPLICATION_JSON)
-    public CompletableFuture<Map<String, Object>> searchProductsOnly(@Body Query query) throws IOException {
+    public CompletableFuture<Response> searchProductsOnly(@Body Query query) throws IOException {
         return service.searchProductsOnly(query);
     }
 
     @Post(value = "products_with_aggs", produces = MediaType.APPLICATION_JSON, consumes = MediaType.APPLICATION_JSON)
-    public CompletableFuture<Map<String, Object>> searchWithAggs(@Body Query query) throws IOException {
+    public CompletableFuture<Response> searchWithAggs(@Body Query query) throws IOException {
         return service.searchWithAggs(query);
     }
 
     @Post(value = "products_with_filtered_aggs", produces = MediaType.APPLICATION_JSON, consumes = MediaType.APPLICATION_JSON)
-    public CompletableFuture<Map<String, Object>> searchWithFilteredAggs(@Body Query query) throws IOException {
+    public CompletableFuture<Response> searchWithFilteredAggs(@Body Query query) throws IOException {
         return service.searchWithFilteredAggs(query);
     }
 

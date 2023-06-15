@@ -5,8 +5,6 @@ import com.aerospike.client.Key;
 import com.aerospike.client.Record;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import elasticsearch.ecommerce.app.entities.Query;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.nio.entity.NByteArrayEntity;
@@ -39,13 +37,10 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-
-import static java.util.Collections.emptyMap;
 
 @SuppressWarnings("deprecation")
 @Singleton
@@ -56,8 +51,6 @@ public class ProductQueryService extends ProductServiceBase {
     // TODO search with search as you type
 
     private static final Logger LOG = LoggerFactory.getLogger(ProductQueryService.class);
-    private static final String PRODUCT_IMAGE = "productImage";
-    private static final String BRAND_LOGO = "brandLogo";
     private final RestHighLevelClient client;
     private final AerospikeClient aerospikeClient;
     private final ObjectMapper mapper;
@@ -70,7 +63,7 @@ public class ProductQueryService extends ProductServiceBase {
     }
 
     // search only across hits, don't include any aggregations
-    public CompletableFuture<Map<String, Object>> searchProductsOnly(Query query) throws IOException {
+    public CompletableFuture<Response> searchProductsOnly(Query query) throws IOException {
         return asyncSearch(createFullTextSearchQuery(query), null, query.getFrom());
     }
 
@@ -81,7 +74,7 @@ public class ProductQueryService extends ProductServiceBase {
      * <p>
      * Stock and Price are created as regular filters as part of the query, which indeed will change the aggregations
      */
-    public CompletableFuture<Map<String, Object>> searchWithAggs(Query query) throws IOException {
+    public CompletableFuture<Response> searchWithAggs(Query query) throws IOException {
         BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
         queryBuilder.must(createFullTextSearchQuery(query));
         // filter for price and stock, as they become range queries
@@ -120,7 +113,7 @@ public class ProductQueryService extends ProductServiceBase {
      * This is the ultimate query, where all facets are filtered based on the fields of the other facets.
      * This will result in a bigger query, but return proper numbers
      */
-    public CompletableFuture<Map<String, Object>> searchWithFilteredAggs(Query query) throws IOException {
+    public CompletableFuture<Response> searchWithFilteredAggs(Query query) throws IOException {
         // this is the query for the total hits and the initial aggregations
         BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery();
         queryBuilder.must(createFullTextSearchQuery(query));
@@ -169,14 +162,6 @@ public class ProductQueryService extends ProductServiceBase {
     }
 
     /**
-     * Get product image URL from the Aerospike.
-     */
-    public Pair<String, String> getProductImageAndBrandLogoFromAerospike(String id) {
-        Record record = aerospikeClient.get(null, new Key("root", null, id));
-        return new ImmutablePair<>((String) record.bins.get(PRODUCT_IMAGE), (String) record.bins.get(BRAND_LOGO));
-    }
-
-    /**
      * Creates regular text search query
      */
     private QueryBuilder createFullTextSearchQuery(Query query) {
@@ -205,9 +190,9 @@ public class ProductQueryService extends ProductServiceBase {
         return aggregationBuilder;
     }
 
-    private CompletableFuture<Map<String, Object>> asyncSearch(QueryBuilder queryBuilder, QueryBuilder postFilterQuery, int from, AggregationBuilder... aggs) throws IOException {
+    private CompletableFuture<Response> asyncSearch(QueryBuilder queryBuilder, QueryBuilder postFilterQuery, int from, AggregationBuilder... aggs) throws IOException {
         SearchRequest request = search(queryBuilder, postFilterQuery, from, aggs);
-        final CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
+        final CompletableFuture<Response> future = new CompletableFuture<>();
         ResponseListener listener = newResponseListener(future);
 
         Request lowLevelRequest = new Request(HttpPost.METHOD_NAME, INDEX + "/_search");
@@ -241,32 +226,12 @@ public class ProductQueryService extends ProductServiceBase {
         return ContentType.create(xContentType.mediaTypeWithoutParameters(), (Charset) null);
     }
 
-    private ResponseListener newResponseListener(final CompletableFuture<Map<String, Object>> future) {
+    private ResponseListener newResponseListener(final CompletableFuture<Response> future) {
         return new ResponseListener() {
 
             @Override
-            @SuppressWarnings("unchecked")
             public void onSuccess(Response response) {
-                Map<String, Object> responesMap = emptyMap();
-                if (response.getStatusLine().getStatusCode() == 200) {
-                    try {
-                        responesMap = MAPPER.readValue(response.getEntity().getContent(), Map.class);
-                        ((List<Map<String, Object>>) ((Map<String, Object>) responesMap.getOrDefault("hits", emptyMap()))
-                                .getOrDefault("hits", Collections.emptyList())).forEach(hit -> {
-                            Map<String, Object> sourceMap = (Map<String, Object>) hit.getOrDefault("_source", emptyMap());
-                            Map<String, Object> metadataMap = (Map<String, Object>) sourceMap.get("metadata");
-                            String userKey = (String) metadataMap.get("userKey");
-                            if (userKey != null) {
-                                Pair<String, String> productImageAndBrandLogoPair = getProductImageAndBrandLogoFromAerospike(userKey);
-                                sourceMap.put(PRODUCT_IMAGE, productImageAndBrandLogoPair.getLeft());
-                                sourceMap.put(BRAND_LOGO, productImageAndBrandLogoPair.getRight());
-                            }
-                        });
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-                future.complete(responesMap);
+                future.complete(response);
             }
 
             @Override
