@@ -1,10 +1,8 @@
 plugins {
     id "io.spring.dependency-management" version "1.0.9.RELEASE"
-    id "com.github.johnrengelman.shadow" version "5.2.0"
+    id "com.github.johnrengelman.shadow" version "8.1.1"
     id "application"
     id "java"
-    id "net.ltgt.apt-eclipse" version "0.21"
-    id "net.ltgt.apt-idea" version "0.21"
 }
 
 version "0.1"
@@ -46,6 +44,10 @@ dependencies {
 
     // https://mvnrepository.com/artifact/io.netty/netty-all
     implementation group: 'io.netty', name: 'netty-all', version: '4.1.93.Final'
+    // https://mvnrepository.com/artifact/io.netty/netty-transport-native-kqueue
+    implementation 'io.netty:netty-transport-native-kqueue:4.1.122.Final'
+    // https://mvnrepository.com/artifact/io.netty/netty-transport-native-epoll
+    implementation 'io.netty:netty-transport-native-epoll:4.1.122.Final'
 
     testAnnotationProcessor "io.micronaut:micronaut-inject-java"
     testImplementation "org.junit.jupiter:junit-jupiter-api"
@@ -74,6 +76,6 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_14
-    targetCompatibility = JavaVersion.VERSION_14
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
